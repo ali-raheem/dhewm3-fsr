@@ -1,3 +1,53 @@
+# dhewm3-fsr
+
+This is a fork of [dhewm3](https://github.com/dhewm/dhewm3) that adds **AMD FidelityFX Super Resolution 1.0 (FSR 1.0)** upscaling support to _Doom 3_.
+
+FSR 1.0 renders the 3D scene at a reduced internal resolution, then applies EASU (Edge-Adaptive Spatial Upsampling) and RCAS (Robust Contrast-Adaptive Sharpening) passes to produce a full-resolution image. The 2D HUD and menus always render at full display resolution and are unaffected by FSR.
+
+Is this actually useful? Well I play dhewm3 on my low end notebook and this gets me a stable 30+FPS compared to the dips to 20-22FPS without it. It does lower peak performance from 40FPS to about 35FPS however. I am running on an Intel Celeron N4020 with 2 cores running at 1.1GHz. 
+
+## Screenshots
+
+| `r_fsr 0` (off) | `r_fsr 2` (Quality) | `r_fsr 4` (Performance) |
+|:-:|:-:|:-:|
+| ![r_fsr 0](screenshots/r_fsr%200.jpg) | ![r_fsr 2](screenshots/r_fsr%202.jpg) | ![r_fsr 4](screenshots/r_fsr%204.jpg) |
+
+![r_fsr 4 scene 2](screenshots/r_fsr%204-2.jpg)
+
+## FSR CVars
+
+| CVar | Default | Description |
+|------|---------|-------------|
+| `r_fsr` | `0` | FSR quality preset: `0`=off, `1`=Ultra Quality (77%), `2`=Quality (67%), `3`=Balanced (59%), `4`=Performance (50%) |
+| `r_fsrSharpness` | `0.2` | RCAS sharpening amount: `0.0`=maximum sharpness, `2.0`=minimum. Set below `0` to disable RCAS entirely. |
+
+Both CVars can be changed at runtime from the console without restarting.
+
+## Quality Presets
+
+| Preset | `r_fsr` | Render scale | Upscale factor |
+|--------|---------|-------------|----------------|
+| Ultra Quality | `1` | 77% | 1.3× |
+| Quality | `2` | 67% | 1.5× |
+| Balanced | `3` | 59% | 1.7× |
+| Performance | `4` | 50% | 2.0× |
+
+## Performance
+
+FSR 1.0 shines most in GPU-bound, complex scenes. On tested hardware:
+
+- **Complex scenes** (heavy geometry/lighting): ~21 FPS → ~32 FPS with `r_fsr 4` — a significant uplift
+- **Simple scenes** (already above 40 FPS): may see a slight dip to ~35 FPS with `r_fsr 4`
+
+The overall effect is a more **stable, consistent frame rate** across varying scene complexity rather than a uniform speedup.
+
+## Requirements
+
+- **OpenGL 4.0** or newer (required for GLSL 4.00 and `textureGather`). FSR is automatically disabled with a console message if the driver reports an older version.
+- All other dhewm3 requirements apply (see below).
+
+---
+
 # ABOUT
 
 _dhewm 3_ is a _Doom 3_ GPL source port, known to work on at least Windows, Linux, macOS and FreeBSD.
@@ -27,6 +77,7 @@ altering the original gameplay.
 
 Compared to the original _DOOM 3_, the changes of _dhewm 3_ worth mentioning are:
 
+- **FSR 1.0 upscaling** (this fork — see above for details)
 - 64-bit port
 - SDL for low-level OS support, OpenGL and input handling
 - OpenAL for audio output, all OS-specific audio backends are gone

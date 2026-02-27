@@ -597,6 +597,18 @@ if(NOT APPLE AND NOT WIN32)
 	message(STATUS "  Data directory:    ${datadir}")
 endif()
 
+# Embed AMD FidelityFX FSR 1.0 headers as GLSL source strings for fsr.cpp.
+# The generated header (fsr_embedded.h) contains ffx_a.h and ffx_fsr1.h as
+# C++ raw string literals that are passed to glShaderSource at runtime.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/renderer/ffx_a.h"    FFX_A_CONTENT)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/renderer/ffx_fsr1.h" FFX_FSR1_CONTENT)
+configure_file(
+	"${CMAKE_CURRENT_SOURCE_DIR}/renderer/fsr_embedded.h.in"
+	"${CMAKE_BINARY_DIR}/fsr_embedded.h"
+	@ONLY
+)
+include_directories("${CMAKE_BINARY_DIR}")
+
 set(src_renderer
 	renderer/Cinematic.cpp
 	renderer/GuiModel.cpp
@@ -631,6 +643,7 @@ set(src_renderer
 	renderer/VertexCache.cpp
 	renderer/draw_arb2.cpp
 	renderer/draw_common.cpp
+	renderer/fsr.cpp
 	renderer/tr_backend.cpp
 	renderer/tr_deform.cpp
 	renderer/tr_font.cpp

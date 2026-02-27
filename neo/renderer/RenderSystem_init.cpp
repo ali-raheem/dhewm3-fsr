@@ -49,6 +49,7 @@ If you have questions concerning this license or the applicable additional terms
 #endif
 
 #include "stb_image_write.h"
+#include "renderer/fsr.h"
 
 // functions that are not called every frame
 
@@ -162,6 +163,13 @@ idCVar r_useCombinerDisplayLists( "r_useCombinerDisplayLists", "1", CVAR_RENDERE
 idCVar r_useDepthBoundsTest( "r_useDepthBoundsTest", "1", CVAR_RENDERER | CVAR_BOOL, "use depth bounds test to reduce shadow fill" );
 
 idCVar r_screenFraction( "r_screenFraction", "100", CVAR_RENDERER | CVAR_INTEGER, "for testing fill rate, the resolution of the entire screen can be changed" );
+
+idCVar r_fsr( "r_fsr", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER,
+	"FSR 1.0 upscaling quality preset. 0=off, 1=Ultra Quality (77%), "
+	"2=Quality (67%), 3=Balanced (59%), 4=Performance (50%)", 0, 4 );
+idCVar r_fsrSharpness( "r_fsrSharpness", "0.2", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT,
+	"FSR RCAS sharpness: 0.0=maximum sharpness, 2.0=minimum sharpness. "
+	"Negative value disables RCAS pass.", -1.0f, 2.0f );
 idCVar r_demonstrateBug( "r_demonstrateBug", "0", CVAR_RENDERER | CVAR_BOOL, "used during development to show IHV's their problems" );
 idCVar r_usePortals( "r_usePortals", "1", CVAR_RENDERER | CVAR_BOOL, " 1 = use portals to perform area culling, otherwise draw everything" );
 idCVar r_singleLight( "r_singleLight", "-1", CVAR_RENDERER | CVAR_INTEGER, "suppress all but one light" );
@@ -558,6 +566,14 @@ static void R_CheckPortableExtensions( void ) {
 		qglDepthBoundsEXT = (PFNGLDEPTHBOUNDSEXTPROC)GLimp_ExtensionPointer( "glDepthBoundsEXT" );
 	}
 
+	// OpenGL 4.0 availability — required for FSR 1.0 (textureGather + GLSL 4.00)
+	glConfig.fsrAvailable = ( glConfig.glVersion >= 4.0f );
+	if ( glConfig.fsrAvailable ) {
+		common->Printf( "...OpenGL 4.0 available, FSR 1.0 supported\n" );
+	} else {
+		common->Printf( "X..OpenGL 4.0 not available (%.1f), FSR disabled\n", glConfig.glVersion );
+	}
+
 	// GL_ARB_debug_output
 	glConfig.glDebugOutputAvailable = false;
 	if ( glConfig.haveDebugContext ) {
@@ -861,6 +877,9 @@ void R_InitOpenGL( void ) {
 
 	cmdSystem->AddCommand( "reloadARBprograms", R_ReloadARBPrograms_f, CMD_FL_RENDERER, "reloads ARB programs" );
 	R_ReloadARBPrograms_f( idCmdArgs() );
+
+	// initialize FSR 1.0 upscaling (requires GL 4.0)
+	FSR_Init();
 
 	// allocate the vertex array range or vertex objects
 	vertexCache.Init();
@@ -2126,6 +2145,7 @@ void R_VidRestart_f( const idCmdArgs &args ) {
 
 			if ( GLimp_SetScreenParms( parms ) ) {
 				common->Printf( "'vid_restart partial' succeeded in changing resolution and/or fullscreen mode\n" );
+				FSR_Reinit();
 				return;
 			}
 		}
@@ -2159,6 +2179,8 @@ void R_VidRestart_f( const idCmdArgs &args ) {
 	soundSystem->ShutdownHW();
 	Sys_ShutdownInput();
 	globalImages->PurgeAllImages();
+	// shut down FSR before the GL context is destroyed
+	FSR_Shutdown();
 	// free the context and close the window
 	GLimp_Shutdown();
 	glConfig.isInitialized = false;

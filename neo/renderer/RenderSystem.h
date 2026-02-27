@@ -81,6 +81,8 @@ typedef struct glconfig_s {
 	bool				depthBoundsTestAvailable;
 	bool				glDebugOutputAvailable;
 
+	bool				fsrAvailable;	// OpenGL 4.0+ detected (textureGather + GLSL 4.00, required for FSR 1.0)
+
 	// GL framebuffer size, see also winWidth and winHeight
 	int					vidWidth, vidHeight;	// passed to R_BeginFrame
 

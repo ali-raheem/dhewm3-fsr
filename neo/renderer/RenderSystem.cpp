@@ -37,6 +37,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "renderer/RenderWorld_local.h"
 
 #include "renderer/tr_local.h"
+#include "renderer/fsr.h"
 
 idRenderSystemLocal	tr;
 idRenderSystem	*renderSystem = &tr;
@@ -270,6 +271,8 @@ static void R_CheckCvars( void ) {
 		GLimp_SetWindowResizable( r_windowResizable.GetBool() );
 		r_windowResizable.ClearModified();
 	}
+
+	FSR_CheckCvars();
 }
 
 /*
@@ -611,6 +614,19 @@ void idRenderSystemLocal::BeginFrame( int windowWidth, int windowHeight ) {
 
 	glConfig.vidWidth = windowWidth;
 	glConfig.vidHeight = windowHeight;
+
+	// FSR: override 3D render dimensions to the internal (lower) resolution.
+	// origWidth/origHeight already save the display size; EndFrame restores them.
+	// Skip during screenshot/tiled renders (tiledViewport[0] != 0) so they
+	// always capture at full display resolution.
+	if ( FSR_IsActive() && !tiledViewport[0] && !takingScreenshot ) {
+		fsr.displayWidth  = glConfig.vidWidth;
+		fsr.displayHeight = glConfig.vidHeight;
+		glConfig.vidWidth  = fsr.internalWidth;
+		glConfig.vidHeight = fsr.internalHeight;
+		windowWidth  = fsr.internalWidth;
+		windowHeight = fsr.internalHeight;
+	}
 
 	renderCrops[0].x = 0;
 	renderCrops[0].y = 0;

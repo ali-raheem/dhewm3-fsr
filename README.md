@@ -12,6 +12,8 @@ Is this actually useful? Well I play dhewm3 on my low end notebook and this gets
 |:-:|:-:|:-:|
 | ![r_fsr 0](screenshots/r_fsr%200.jpg) | ![r_fsr 2](screenshots/r_fsr%202.jpg) | ![r_fsr 4](screenshots/r_fsr%204.jpg) |
 
+The laptop I'm running it on is so low spec (and probably needs to be to benefit) that taking a screenshot with r_fsr 4 causes a drop of about 5 FPS. With FSR disabled the screenshot doesn't cause performance issues, likely suggesting the laptop is CPU bound.
+
 ![r_fsr 4 scene 2](screenshots/r_fsr%204-2.jpg)
 
 ## FSR CVars

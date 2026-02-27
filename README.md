@@ -1,4 +1,4 @@
-# dhewm3-fsr
+# dhewm3 FSR Edition
 
 This is a fork of [dhewm3](https://github.com/dhewm/dhewm3) that adds **AMD FidelityFX Super Resolution 1.0 (FSR 1.0)** upscaling support to _Doom 3_.
 

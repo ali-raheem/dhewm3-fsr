@@ -2,10 +2,8 @@
 // Contains AMD FidelityFX FSR 1.0 header contents as GLSL source strings.
 // MIT License — Copyright (c) 2021 Advanced Micro Devices, Inc.
 
-static const char ffxAGlslSrc[] = R"FSR(
-@FFX_A_CONTENT@
-)FSR";
+static const char ffxAGlslSrc[] = 
+    @FFX_A_STRINGS@;
 
-static const char ffxFsr1GlslSrc[] = R"FSR(
-@FFX_FSR1_CONTENT@
-)FSR";
+static const char ffxFsr1GlslSrc[] = 
+    @FFX_FSR1_STRINGS@;

@@ -602,6 +602,31 @@ endif()
 # C++ raw string literals that are passed to glShaderSource at runtime.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/renderer/ffx_a.h"    FFX_A_CONTENT)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/renderer/ffx_fsr1.h" FFX_FSR1_CONTENT)
+
+# MSVC has a ~16KB string literal limit, split content into chunks
+function(split_string_for_msvc content out_var)
+	if(MSVC)
+		string(LENGTH "${content}" total_len)
+		set(result "")
+		set(chunk_size 15000)
+		set(pos 0)
+		while(pos LESS total_len)
+			math(EXPR end "${pos} + ${chunk_size}")
+			if(end GREATER total_len)
+				set(end ${total_len})
+			endif()
+			string(SUBSTRING "${content}" ${pos} ${chunk_size} chunk)
+			string(APPEND result "R\"FSR(${chunk})FSR\"\n    ")
+			math(EXPR pos "${pos} + ${chunk_size}")
+		endwhile()
+		set(${out_var} "${result}" PARENT_SCOPE)
+	else()
+		set(${out_var} "R\"FSR(${content})FSR\"" PARENT_SCOPE)
+	endif()
+endfunction()
+
+split_string_for_msvc("${FFX_A_CONTENT}" FFX_A_STRINGS)
+split_string_for_msvc("${FFX_FSR1_CONTENT}" FFX_FSR1_STRINGS)
 configure_file(
 	"${CMAKE_CURRENT_SOURCE_DIR}/renderer/fsr_embedded.h.in"
 	"${CMAKE_BINARY_DIR}/fsr_embedded.h"

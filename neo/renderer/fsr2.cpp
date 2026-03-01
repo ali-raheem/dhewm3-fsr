@@ -134,11 +134,12 @@ static const float fsr2Jitter[16][2] = {
 	{ 0.03125f, 0.59259259f }
 };
 
-static const float fsr2ScaleFactors[4] = {
+static const float fsr2ScaleFactors[5] = {
 	1.0f,
-	1.0f / 0.67f,
-	1.0f / 0.59f,
-	1.0f / 0.50f
+	1.0f / 0.67f,   // 1: Quality (67% render scale, 1.5x upscale)
+	1.0f / 0.59f,   // 2: Balanced (59% render scale, 1.7x upscale)
+	1.0f / 0.50f,   // 3: Performance (50% render scale, 2.0x upscale)
+	1.0f / 0.37f    // 4: Ultra Performance (37% render scale, 2.7x upscale)
 };
 
 static bool FSR2_LoadExtensionPointers( void ) {
@@ -440,7 +441,7 @@ void FSR2_Reinit( void ) {
 	FSR2_DeleteFBOs();
 	fsr2.active = false;
 
-	if ( r_fsr2.GetInteger() < 1 || r_fsr2.GetInteger() > 3 ) {
+	if ( r_fsr2.GetInteger() < 1 || r_fsr2.GetInteger() > 4 ) {
 		return;
 	}
 
@@ -457,7 +458,7 @@ void FSR2_Reinit( void ) {
 
 	int preset = r_fsr2.GetInteger();
 	if ( preset < 1 ) preset = 1;
-	if ( preset > 3 ) preset = 3;
+	if ( preset > 4 ) preset = 4;
 	float scale = fsr2ScaleFactors[preset];
 
 	fsr2.inputWidth  = int( float( fsr2.displayWidth  ) / scale + 0.5f );

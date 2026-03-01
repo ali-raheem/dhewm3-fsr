@@ -16,6 +16,7 @@ Requires OpenGL 4.0 (for GLSL 4.00 and multiple render targets).
 #include "renderer/taa.h"
 #include "renderer/taa_glsl.h"
 #include "renderer/fsr.h"
+#include "renderer/fsr2.h"
 
 typedef void        (APIENTRYP PFNTAAGENFRAMEBUFFERSPROC)   (GLsizei, GLuint *);
 typedef void        (APIENTRYP PFNTAADELETEFRAMEBUFFERSPROC)(GLsizei, const GLuint *);
@@ -110,6 +111,7 @@ static PFNTAABLITFRAMEBUFFERPROC        taa_glBlitFramebuffer;
 extern idCVar r_taa;
 extern idCVar r_taaFeedback;
 extern idCVar r_fsr;
+extern idCVar r_fsr2;
 
 taaState_t taa;
 
@@ -405,7 +407,10 @@ void TAA_Reinit( void ) {
 		return;
 	}
 
-	if ( FSR_IsActive() ) {
+	if ( FSR2_IsActive() ) {
+		taa.renderWidth  = fsr2.inputWidth;
+		taa.renderHeight = fsr2.inputHeight;
+	} else if ( FSR_IsActive() ) {
 		taa.renderWidth  = fsr.internalWidth;
 		taa.renderHeight = fsr.internalHeight;
 	} else {
@@ -425,7 +430,7 @@ void TAA_Reinit( void ) {
 void TAA_CheckCvars( void ) {
 	if ( !taa.available ) return;
 
-	if ( r_taa.IsModified() || r_fsr.IsModified() ) {
+	if ( r_taa.IsModified() || r_fsr.IsModified() || r_fsr2.IsModified() ) {
 		r_taa.ClearModified();
 		TAA_Reinit();
 	}
@@ -464,17 +469,18 @@ void TAA_StoreMatrices( void ) {
 }
 
 void TAA_VelocityPass( void ) {
-	if ( !taa.havePrevMatrices ) {
-		qglClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
-		qglClear( GL_COLOR_BUFFER_BIT );
-		return;
-	}
-
-	GLuint targetFBO = FSR_IsActive() ? fsr.sceneFBO : taa.sceneFBO;
-	GLuint depthTex = FSR_IsActive() ? fsr.sceneDepthTex : taa.sceneDepthTex;
+	GLuint targetFBO = FSR2_IsActive() ? fsr2.sceneFBO : (FSR_IsActive() ? fsr.sceneFBO : taa.sceneFBO);
+	GLuint depthTex = FSR2_IsActive() ? fsr2.sceneDepthTex : (FSR_IsActive() ? fsr.sceneDepthTex : taa.sceneDepthTex);
 
 	taa_glBindFramebuffer( GL_FRAMEBUFFER, targetFBO );
 	qglDrawBuffer( GL_COLOR_ATTACHMENT1 );
+
+	if ( !taa.havePrevMatrices ) {
+		qglClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
+		qglClear( GL_COLOR_BUFFER_BIT );
+		qglDrawBuffer( GL_COLOR_ATTACHMENT0 );
+		return;
+	}
 
 	qglViewport( 0, 0, taa.renderWidth, taa.renderHeight );
 
@@ -527,11 +533,11 @@ void TAA_VelocityPass( void ) {
 }
 
 void TAA_Resolve( void ) {
-	GLuint srcColorTex = FSR_IsActive() ? fsr.sceneColorTex : taa.sceneColorTex;
-	GLuint srcVelocityTex = FSR_IsActive() ? fsr.velocityTex : taa.velocityTex;
-	GLuint srcFBO = FSR_IsActive() ? fsr.sceneFBO : taa.sceneFBO;
-	int width = FSR_IsActive() ? fsr.internalWidth : taa.renderWidth;
-	int height = FSR_IsActive() ? fsr.internalHeight : taa.renderHeight;
+	GLuint srcColorTex = FSR2_IsActive() ? fsr2.sceneColorTex : (FSR_IsActive() ? fsr.sceneColorTex : taa.sceneColorTex);
+	GLuint srcVelocityTex = FSR2_IsActive() ? fsr2.velocityTex : (FSR_IsActive() ? fsr.velocityTex : taa.velocityTex);
+	GLuint srcFBO = FSR2_IsActive() ? fsr2.sceneFBO : (FSR_IsActive() ? fsr.sceneFBO : taa.sceneFBO);
+	int width = FSR2_IsActive() ? fsr2.inputWidth : (FSR_IsActive() ? fsr.internalWidth : taa.renderWidth);
+	int height = FSR2_IsActive() ? fsr2.inputHeight : (FSR_IsActive() ? fsr.internalHeight : taa.renderHeight);
 
 	GLuint tempFBO = 0;
 	GLuint tempTex = 0;
@@ -594,7 +600,7 @@ void TAA_Resolve( void ) {
 	                    0, 0, width, height,
 	                    GL_COLOR_BUFFER_BIT, GL_NEAREST );
 
-	if ( !FSR_IsActive() ) {
+	if ( !FSR_IsActive() && !FSR2_IsActive() ) {
 		taa_glBindFramebuffer( GL_READ_FRAMEBUFFER, tempFBO );
 		taa_glBindFramebuffer( GL_DRAW_FRAMEBUFFER, 0 );
 		taa_glBlitFramebuffer( 0, 0, width, height,
@@ -617,5 +623,5 @@ void TAA_Resolve( void ) {
 }
 
 bool TAA_NeedsSceneFBO( void ) {
-	return TAA_IsActive() || FSR_IsActive();
+	return TAA_IsActive() || FSR_IsActive() || FSR2_IsActive();
 }

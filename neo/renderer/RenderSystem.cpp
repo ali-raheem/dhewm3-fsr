@@ -38,6 +38,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 #include "renderer/fsr.h"
+#include "renderer/fsr2.h"
 
 idRenderSystemLocal	tr;
 idRenderSystem	*renderSystem = &tr;
@@ -274,6 +275,7 @@ static void R_CheckCvars( void ) {
 
 	FSR_CheckCvars();
 	TAA_CheckCvars();
+	FSR2_CheckCvars();
 }
 
 /*
@@ -616,11 +618,18 @@ void idRenderSystemLocal::BeginFrame( int windowWidth, int windowHeight ) {
 	glConfig.vidWidth = windowWidth;
 	glConfig.vidHeight = windowHeight;
 
-	// FSR: override 3D render dimensions to the internal (lower) resolution.
+	// FSR/FSR2: override 3D render dimensions to the internal (lower) resolution.
 	// origWidth/origHeight already save the display size; EndFrame restores them.
 	// Skip during screenshot/tiled renders (tiledViewport[0] != 0) so they
 	// always capture at full display resolution.
-	if ( FSR_IsActive() && !tiledViewport[0] && !takingScreenshot ) {
+	if ( FSR2_IsActive() && !tiledViewport[0] && !takingScreenshot ) {
+		fsr2.displayWidth  = glConfig.vidWidth;
+		fsr2.displayHeight = glConfig.vidHeight;
+		glConfig.vidWidth  = fsr2.inputWidth;
+		glConfig.vidHeight = fsr2.inputHeight;
+		windowWidth  = fsr2.inputWidth;
+		windowHeight = fsr2.inputHeight;
+	} else if ( FSR_IsActive() && !tiledViewport[0] && !takingScreenshot ) {
 		fsr.displayWidth  = glConfig.vidWidth;
 		fsr.displayHeight = glConfig.vidHeight;
 		glConfig.vidWidth  = fsr.internalWidth;

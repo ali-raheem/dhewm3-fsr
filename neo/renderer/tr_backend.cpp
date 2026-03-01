@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 #include "renderer/fsr.h"
+#include "renderer/fsr2.h"
 #include "renderer/taa.h"
 
 static idCVar r_fillWindowAlphaChan( "r_fillWindowAlphaChan", "-1", CVAR_SYSTEM | CVAR_NOCHEAT | CVAR_ARCHIVE, "Make sure alpha channel of windows default framebuffer is completely opaque at the end of each frame. Needed at least when using Wayland with older drivers.\n 1: do this, 0: don't do it, -1: let dhewm3 decide (default)" );
@@ -660,8 +661,9 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 	globalImages->CompleteBackgroundImageLoads();
 
 	bool sceneOpen = false;
-	bool useFsrScene = FSR_IsActive();
-	bool useTaaScene = TAA_IsActive() && !FSR_IsActive();
+	bool useFsr2Scene = FSR2_IsActive();
+	bool useFsrScene = FSR_IsActive() && !useFsr2Scene;
+	bool useTaaScene = TAA_IsActive() && !FSR_IsActive() && !useFsr2Scene;
 
 	for ( ; cmds ; cmds = (const emptyCommand_t *)cmds->next ) {
 		switch ( cmds->commandId ) {
@@ -670,41 +672,58 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 		case RC_DRAW_VIEW: {
 			bool is3D = ( ((const drawSurfsCommand_t *)cmds)->viewDef->viewEntitys != NULL );
 			
-			if ( useFsrScene || useTaaScene ) {
+			if ( useFsr2Scene || useFsrScene || useTaaScene ) {
 				if ( is3D && !sceneOpen ) {
-					if ( useFsrScene ) {
+					if ( useFsr2Scene ) {
+						FSR2_BeginScene();
+					} else if ( useFsrScene ) {
 						FSR_BeginScene();
 					} else {
 						TAA_BeginScene();
 					}
 					sceneOpen = true;
 				} else if ( !is3D && sceneOpen ) {
-					if ( TAA_IsActive() ) {
-						TAA_VelocityPass();
-						TAA_Resolve();
-					}
-					if ( useFsrScene ) {
-						FSR_EndScene();
+					if ( useFsr2Scene ) {
+						FSR2_EndScene();
 					} else {
-						TAA_StoreMatrices();
-						RB_SetDefaultGLState();
+						if ( TAA_IsActive() ) {
+							TAA_VelocityPass();
+							TAA_Resolve();
+						}
+						if ( useFsrScene ) {
+							FSR_EndScene();
+						} else {
+							TAA_StoreMatrices();
+							RB_SetDefaultGLState();
+						}
 					}
 					sceneOpen = false;
 				}
-				if ( !is3D && useFsrScene ) {
+				if ( !is3D && ( useFsr2Scene || useFsrScene ) ) {
 					viewDef_t *vd = ((drawSurfsCommand_t *)cmds)->viewDef;
 
-					float scaleX = (float)fsr.displayWidth  / (float)fsr.internalWidth;
-					float scaleY = (float)fsr.displayHeight / (float)fsr.internalHeight;
+					float scaleX, scaleY;
+					int displayW, displayH;
+					if ( useFsr2Scene ) {
+						scaleX = (float)fsr2.displayWidth  / (float)fsr2.inputWidth;
+						scaleY = (float)fsr2.displayHeight / (float)fsr2.inputHeight;
+						displayW = fsr2.displayWidth;
+						displayH = fsr2.displayHeight;
+					} else {
+						scaleX = (float)fsr.displayWidth  / (float)fsr.internalWidth;
+						scaleY = (float)fsr.displayHeight / (float)fsr.internalHeight;
+						displayW = fsr.displayWidth;
+						displayH = fsr.displayHeight;
+					}
 
 					vd->viewport.x1 = 0;
 					vd->viewport.y1 = 0;
-					vd->viewport.x2 = fsr.displayWidth  - 1;
-					vd->viewport.y2 = fsr.displayHeight - 1;
+					vd->viewport.x2 = displayW - 1;
+					vd->viewport.y2 = displayH - 1;
 					vd->scissor.x1  = 0;
 					vd->scissor.y1  = 0;
-					vd->scissor.x2  = fsr.displayWidth  - 1;
-					vd->scissor.y2  = fsr.displayHeight - 1;
+					vd->scissor.x2  = displayW - 1;
+					vd->scissor.y2  = displayH - 1;
 
 					for ( int i = 0; i < vd->numDrawSurfs; i++ ) {
 						idScreenRect &sr = vd->drawSurfs[i]->scissorRect;
@@ -725,15 +744,19 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 			break;
 		case RC_SWAP_BUFFERS:
 			if ( sceneOpen ) {
-				if ( TAA_IsActive() ) {
-					TAA_VelocityPass();
-					TAA_Resolve();
-				}
-				if ( useFsrScene ) {
-					FSR_EndScene();
+				if ( useFsr2Scene ) {
+					FSR2_EndScene();
 				} else {
-					TAA_StoreMatrices();
-					RB_SetDefaultGLState();
+					if ( TAA_IsActive() ) {
+						TAA_VelocityPass();
+						TAA_Resolve();
+					}
+					if ( useFsrScene ) {
+						FSR_EndScene();
+					} else {
+						TAA_StoreMatrices();
+						RB_SetDefaultGLState();
+					}
 				}
 				sceneOpen = false;
 			}

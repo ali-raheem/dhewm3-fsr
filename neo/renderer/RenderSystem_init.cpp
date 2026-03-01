@@ -170,6 +170,13 @@ idCVar r_fsr( "r_fsr", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER,
 idCVar r_fsrSharpness( "r_fsrSharpness", "0.2", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT,
 	"FSR RCAS sharpness: 0.0=maximum sharpness, 2.0=minimum sharpness. "
 	"Negative value disables RCAS pass.", -1.0f, 2.0f );
+
+idCVar r_taa( "r_taa", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL,
+	"Enable temporal anti-aliasing. Reduces edge aliasing and shimmering." );
+idCVar r_taaFeedback( "r_taaFeedback", "0.9", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT,
+	"TAA history feedback factor. Higher values (0.9-0.95) reduce ghosting but may show more aliasing. "
+	"Lower values (0.8-0.85) smooth more but may show ghosting on fast motion.", 0.0f, 1.0f );
+
 idCVar r_demonstrateBug( "r_demonstrateBug", "0", CVAR_RENDERER | CVAR_BOOL, "used during development to show IHV's their problems" );
 idCVar r_usePortals( "r_usePortals", "1", CVAR_RENDERER | CVAR_BOOL, " 1 = use portals to perform area culling, otherwise draw everything" );
 idCVar r_singleLight( "r_singleLight", "-1", CVAR_RENDERER | CVAR_INTEGER, "suppress all but one light" );
@@ -880,6 +887,9 @@ void R_InitOpenGL( void ) {
 
 	// initialize FSR 1.0 upscaling (requires GL 4.0)
 	FSR_Init();
+
+	// initialize TAA temporal anti-aliasing (requires GL 4.0)
+	TAA_Init();
 
 	// allocate the vertex array range or vertex objects
 	vertexCache.Init();
@@ -2179,7 +2189,8 @@ void R_VidRestart_f( const idCmdArgs &args ) {
 	soundSystem->ShutdownHW();
 	Sys_ShutdownInput();
 	globalImages->PurgeAllImages();
-	// shut down FSR before the GL context is destroyed
+	// shut down TAA and FSR before the GL context is destroyed
+	TAA_Shutdown();
 	FSR_Shutdown();
 	// free the context and close the window
 	GLimp_Shutdown();

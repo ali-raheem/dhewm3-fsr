@@ -18,6 +18,7 @@ Requires OpenGL 4.0 (for GLSL 4.00 and textureGather).
 #include "sys/platform.h"
 #include "renderer/tr_local.h"   // glConfig, qgl*, backEnd, etc.
 #include "renderer/fsr.h"
+#include "renderer/taa.h"
 
 // -------------------------------------------------------------------------
 // CPU-side AMD FSR header includes (for FsrEasuCon / FsrRcasCon math)
@@ -51,6 +52,7 @@ Requires OpenGL 4.0 (for GLSL 4.00 and textureGather).
 // -------------------------------------------------------------------------
 extern idCVar r_fsr;
 extern idCVar r_fsrSharpness;
+extern idCVar r_taa;
 
 // -------------------------------------------------------------------------
 // Global FSR state
@@ -89,6 +91,7 @@ typedef GLint       (APIENTRYP PFNFSRGETUNIFORMLOCATIONPROC) (GLuint, const GLch
 typedef void        (APIENTRYP PFNFSRUNIFORM1IPROC)          (GLint, GLint);
 typedef void        (APIENTRYP PFNFSRUNIFORM4FVPROC)         (GLint, GLsizei, const GLfloat *);
 typedef void        (APIENTRYP PFNFSRUNIFORM4UIVPROC)        (GLint, GLsizei, const GLuint *);
+typedef void        (APIENTRYP PFNFSRDRAWBUFFERSPROC)        (GLsizei, const GLenum *);
 
 static PFNFSRGENFRAMEBUFFERSPROC        fsr_glGenFramebuffers;
 static PFNFSRDELETEFRAMEBUFFERSPROC     fsr_glDeleteFramebuffers;
@@ -100,6 +103,7 @@ static PFNFSRRENDERBUFFERSTORAGEPROC    fsr_glRenderbufferStorage;
 static PFNFSRFRAMEBUFFERRENDERBUFFERPROC fsr_glFramebufferRenderbuffer;
 static PFNFSRDELETERENDERBUFFERSPROC    fsr_glDeleteRenderbuffers;
 static PFNFSRCHECKFRAMEBUFFERSTATUSPROC fsr_glCheckFramebufferStatus;
+static PFNFSRDRAWBUFFERSPROC            fsr_glDrawBuffers;
 
 static PFNFSRCREATESHADERPROC           fsr_glCreateShader;
 static PFNFSRSHADERSOURCEPROC           fsr_glShaderSource;
@@ -123,6 +127,7 @@ static PFNFSRUNIFORM4UIVPROC            fsr_glUniform4uiv;
 #ifndef GL_FRAMEBUFFER
 # define GL_FRAMEBUFFER                  0x8D40
 # define GL_COLOR_ATTACHMENT0            0x8CE0
+# define GL_COLOR_ATTACHMENT1            0x8CE1
 # define GL_DEPTH_STENCIL_ATTACHMENT     0x821A
 # define GL_RENDERBUFFER                 0x8D41
 # define GL_DEPTH24_STENCIL8             0x88F0
@@ -132,6 +137,14 @@ static PFNFSRUNIFORM4UIVPROC            fsr_glUniform4uiv;
 # define GL_INFO_LOG_LENGTH              0x8B84
 # define GL_VERTEX_SHADER                0x8B31
 # define GL_FRAGMENT_SHADER              0x8B30
+# define GL_RG                           0x8227
+# define GL_RG16F                        0x822F
+# define GL_DEPTH_STENCIL                0x84F9
+# define GL_UNSIGNED_INT_24_8            0x84FA
+#endif
+
+#ifndef GL_HALF_FLOAT
+# define GL_HALF_FLOAT                   0x140B
 #endif
 
 // -------------------------------------------------------------------------
@@ -159,6 +172,7 @@ static bool FSR_LoadExtensionPointers( void ) {
 	LOAD_PROC( PFNFSRFRAMEBUFFERRENDERBUFFERPROC,  FramebufferRenderbuffer )
 	LOAD_PROC( PFNFSRDELETERENDERBUFFERSPROC,      DeleteRenderbuffers     )
 	LOAD_PROC( PFNFSRCHECKFRAMEBUFFERSTATUSPROC,   CheckFramebufferStatus  )
+	LOAD_PROC( PFNFSRDRAWBUFFERSPROC,              DrawBuffers             )
 	LOAD_PROC( PFNFSRCREATESHADERPROC,             CreateShader            )
 	LOAD_PROC( PFNFSRSHADERSOURCEPROC,             ShaderSource            )
 	LOAD_PROC( PFNFSRCOMPILESHADERPROC,            CompileShader           )
@@ -309,6 +323,7 @@ static void FSR_ComputeInternalRes( void ) {
 // -------------------------------------------------------------------------
 static bool FSR_CreateFBOs( void ) {
 	bool rcasEnabled = ( r_fsrSharpness.GetFloat() >= 0.0f );
+	bool taaEnabled = taa.available && r_taa.GetBool();
 
 	// --- scene FBO (internal resolution) ---
 	qglGenTextures( 1, &fsr.sceneColorTex );
@@ -321,18 +336,47 @@ static bool FSR_CreateFBOs( void ) {
 	qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
 	qglBindTexture( GL_TEXTURE_2D, 0 );
 
-	fsr_glGenRenderbuffers( 1, &fsr.sceneDepthRBO );
-	fsr_glBindRenderbuffer( GL_RENDERBUFFER, fsr.sceneDepthRBO );
-	fsr_glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
-		fsr.internalWidth, fsr.internalHeight );
-	fsr_glBindRenderbuffer( GL_RENDERBUFFER, 0 );
+	if ( taaEnabled ) {
+		qglGenTextures( 1, &fsr.velocityTex );
+		qglBindTexture( GL_TEXTURE_2D, fsr.velocityTex );
+		qglTexImage2D( GL_TEXTURE_2D, 0, GL_RG16F, fsr.internalWidth, fsr.internalHeight,
+			0, GL_RG, GL_HALF_FLOAT, NULL );
+		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+		qglBindTexture( GL_TEXTURE_2D, 0 );
+
+		qglGenTextures( 1, &fsr.sceneDepthTex );
+		qglBindTexture( GL_TEXTURE_2D, fsr.sceneDepthTex );
+		qglTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, fsr.internalWidth, fsr.internalHeight,
+			0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL );
+		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+		qglBindTexture( GL_TEXTURE_2D, 0 );
+	} else {
+		fsr_glGenRenderbuffers( 1, &fsr.sceneDepthRBO );
+		fsr_glBindRenderbuffer( GL_RENDERBUFFER, fsr.sceneDepthRBO );
+		fsr_glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
+			fsr.internalWidth, fsr.internalHeight );
+		fsr_glBindRenderbuffer( GL_RENDERBUFFER, 0 );
+	}
 
 	fsr_glGenFramebuffers( 1, &fsr.sceneFBO );
 	fsr_glBindFramebuffer( GL_FRAMEBUFFER, fsr.sceneFBO );
 	fsr_glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 		GL_TEXTURE_2D, fsr.sceneColorTex, 0 );
-	fsr_glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-		GL_RENDERBUFFER, fsr.sceneDepthRBO );
+	if ( taaEnabled ) {
+		fsr_glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
+			GL_TEXTURE_2D, fsr.velocityTex, 0 );
+		fsr_glFramebufferTexture2D( GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+			GL_TEXTURE_2D, fsr.sceneDepthTex, 0 );
+	} else {
+		fsr_glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+			GL_RENDERBUFFER, fsr.sceneDepthRBO );
+	}
 
 	if ( fsr_glCheckFramebufferStatus( GL_FRAMEBUFFER ) != GL_FRAMEBUFFER_COMPLETE ) {
 		common->Warning( "FSR: scene FBO incomplete — disabling FSR" );
@@ -374,6 +418,8 @@ static bool FSR_CreateFBOs( void ) {
 static void FSR_DeleteFBOs( void ) {
 	if ( fsr.easuFBO      ) { fsr_glDeleteFramebuffers( 1, &fsr.easuFBO      ); fsr.easuFBO      = 0; }
 	if ( fsr.easuColorTex ) { qglDeleteTextures( 1, &fsr.easuColorTex );        fsr.easuColorTex = 0; }
+	if ( fsr.velocityTex  ) { qglDeleteTextures( 1, &fsr.velocityTex  );        fsr.velocityTex  = 0; }
+	if ( fsr.sceneDepthTex ) { qglDeleteTextures( 1, &fsr.sceneDepthTex );      fsr.sceneDepthTex = 0; }
 	if ( fsr.sceneFBO      ) { fsr_glDeleteFramebuffers( 1, &fsr.sceneFBO     ); fsr.sceneFBO     = 0; }
 	if ( fsr.sceneColorTex ) { qglDeleteTextures( 1, &fsr.sceneColorTex );      fsr.sceneColorTex = 0; }
 	if ( fsr.sceneDepthRBO ) { fsr_glDeleteRenderbuffers( 1, &fsr.sceneDepthRBO ); fsr.sceneDepthRBO = 0; }
@@ -502,6 +548,9 @@ void FSR_CheckCvars( void ) {
 		r_fsr.ClearModified();
 		r_fsrSharpness.ClearModified();
 		FSR_Reinit();
+		if ( TAA_IsActive() ) {
+			TAA_Reinit();
+		}
 	}
 }
 
@@ -514,6 +563,14 @@ Called just before the first 3D draw command in a frame.
 */
 void FSR_BeginScene( void ) {
 	fsr_glBindFramebuffer( GL_FRAMEBUFFER, fsr.sceneFBO );
+
+	bool taaEnabled = taa.available && r_taa.GetBool();
+	if ( taaEnabled ) {
+		GLuint buffers[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+		fsr_glDrawBuffers( 2, buffers );
+	} else {
+		qglDrawBuffer( GL_COLOR_ATTACHMENT0 );
+	}
 
 	qglViewport( 0, 0, fsr.internalWidth, fsr.internalHeight );
 	if ( r_useScissor.GetBool() ) {

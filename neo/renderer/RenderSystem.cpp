@@ -273,6 +273,7 @@ static void R_CheckCvars( void ) {
 	}
 
 	FSR_CheckCvars();
+	TAA_CheckCvars();
 }
 
 /*

@@ -669,6 +669,7 @@ set(src_renderer
 	renderer/draw_arb2.cpp
 	renderer/draw_common.cpp
 	renderer/fsr.cpp
+	renderer/taa.cpp
 	renderer/tr_backend.cpp
 	renderer/tr_deform.cpp
 	renderer/tr_font.cpp

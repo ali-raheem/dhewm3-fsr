@@ -1,11 +1,26 @@
 # dhewm3 FSR Edition
 
-This is a fork of [dhewm3](https://github.com/dhewm/dhewm3) that adds **AMD FidelityFX Super Resolution 1.0 (FSR 1.0)** upscaling support to _Doom 3_.
+This is a fork of [dhewm3](https://github.com/dhewm/dhewm3) that adds **AMD FidelityFX Super Resolution 1.0 (FSR 1.0)** upscaling and **Temporal Anti-Aliasing (TAA)** support to _Doom 3_.
+
+## FSR 1.0
 
 FSR 1.0 renders the 3D scene at a reduced internal resolution, then applies EASU (Edge-Adaptive Spatial Upsampling) and RCAS (Robust Contrast-Adaptive Sharpening) passes to produce a full-resolution image. The 2D HUD and menus always render at full display resolution and are unaffected by FSR.
 
-Is this actually useful? Well I play dhewm3 on my low end notebook and this gets me a stable 30+FPS compared to the dips to 20-22FPS without it. It does lower peak performance from 40FPS to about 35FPS however. I am running on an Intel Celeron N4020 with 2 cores running at 1.1GHz. 
+## TAA
 
+Temporal Anti-Aliasing reduces edge aliasing and shimmering by blending the current frame with previous frames using motion vectors for reprojection. This provides smoother edges than FXAA with less blurring.
+
+## Roadmap to FSR 2.0
+
+This project is working towards FSR 2.0 support. The TAA implementation provides the foundational infrastructure needed:
+- Motion vector generation
+- Temporal history management
+- Jittered projection matrix
+- Neighborhood clamping
+
+FSR 2.0 will build on this to provide temporal upscaling with better quality than FSR 1.0.
+
+Is this actually useful? Well I play dhewm3 on my low end notebook and this gets me a stable 30+FPS compared to the dips to 20-22FPS without it. It does lower peak performance from 40FPS to about 35FPS however. I am running on an Intel Celeron N4020 with 2 cores running at 1.1GHz.
 ## Screenshots
 
 | `r_fsr 0` (off) | `r_fsr 2` (Quality) | `r_fsr 4` (Performance) |
@@ -16,16 +31,18 @@ The laptop I'm running it on is so low spec (and probably needs to be to benefit
 
 ![r_fsr 4 scene 2](screenshots/r_fsr%204-2.jpg)
 
-## FSR CVars
+## FSR
+
+### CVars
 
 | CVar | Default | Description |
 |------|---------|-------------|
-| `r_fsr` | `0` | FSR quality preset: `0`=off, `1`=Ultra Quality (77%), `2`=Quality (67%), `3`=Balanced (59%), `4`=Performance (50%) |
-| `r_fsrSharpness` | `0.2` | RCAS sharpening amount: `0.0`=maximum sharpness, `2.0`=minimum. Set below `0` to disable RCAS entirely. |
+| `r_fsr` | `0` | FSR quality preset: `0`=off, `1`=Ultra Quality, `2`=Quality, `3`=Balanced, `4`=Performance |
+| `r_fsrSharpness` | `0.2` | RCAS sharpening: `0.0`=maximum sharpness, `2.0`=minimum. Set below `0` to disable RCAS. |
 
 Both CVars can be changed at runtime from the console without restarting.
 
-## Quality Presets
+### Quality Presets
 
 | Preset | `r_fsr` | Render scale | Upscale factor |
 |--------|---------|-------------|----------------|
@@ -34,7 +51,7 @@ Both CVars can be changed at runtime from the console without restarting.
 | Balanced | `3` | 59% | 1.7× |
 | Performance | `4` | 50% | 2.0× |
 
-## Performance
+### Performance
 
 FSR 1.0 shines most in GPU-bound, complex scenes. On tested hardware:
 
@@ -42,6 +59,40 @@ FSR 1.0 shines most in GPU-bound, complex scenes. On tested hardware:
 - **Simple scenes** (already above 40 FPS): may see a slight dip to ~35 FPS with `r_fsr 4`
 
 The overall effect is a more **stable, consistent frame rate** across varying scene complexity rather than a uniform speedup.
+
+## TAA
+
+Temporal Anti-Aliasing reduces jagged edges and shimmering by blending multiple frames over time. It works independently or combined with FSR for both anti-aliasing and upscaling.
+
+### CVars
+
+| CVar | Default | Description |
+|------|---------|-------------|
+| `r_taa` | `0` | Enable TAA: `0`=off, `1`=on |
+| `r_taaFeedback` | `0.9` | History blend factor. Higher (`0.92-0.95`) reduces ghosting but shows more aliasing. Lower (`0.8-0.85`) smooths more but may show trailing on fast motion. |
+
+### Usage
+
+**TAA only (native resolution):**
+```
+r_fsr 0
+r_taa 1
+```
+
+**TAA + FSR (upscaled with anti-aliasing):**
+```
+r_fsr 2
+r_taa 1
+```
+
+### Tuning
+
+- **Ghosting on fast motion**: Increase `r_taaFeedback 0.92`
+- **Too much aliasing**: Decrease `r_taaFeedback 0.85`
+- **Image too soft**: Combine with FSR's RCAS sharpening (`r_fsrSharpness 0.1`)
+
+Both CVars can be changed at runtime from the console without restarting.
+
 
 ## Requirements
 
@@ -80,6 +131,7 @@ altering the original gameplay.
 Compared to the original _DOOM 3_, the changes of _dhewm 3_ worth mentioning are:
 
 - **FSR 1.0 upscaling** (this fork — see above for details)
+- **Temporal Anti-Aliasing (TAA)** (this fork — see above for details)
 - 64-bit port
 - SDL for low-level OS support, OpenGL and input handling
 - OpenAL for audio output, all OS-specific audio backends are gone

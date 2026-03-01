@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 #include "renderer/fsr.h"
+#include "renderer/taa.h"
 
 static idCVar r_fillWindowAlphaChan( "r_fillWindowAlphaChan", "-1", CVAR_SYSTEM | CVAR_NOCHEAT | CVAR_ARCHIVE, "Make sure alpha channel of windows default framebuffer is completely opaque at the end of each frame. Needed at least when using Wayland with older drivers.\n 1: do this, 0: don't do it, -1: let dhewm3 decide (default)" );
 
@@ -658,8 +659,9 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 	// upload any image loads that have completed
 	globalImages->CompleteBackgroundImageLoads();
 
-	// Track whether the scene FBO is currently open (FSR active path)
-	bool fsrSceneOpen = false;
+	bool sceneOpen = false;
+	bool useFsrScene = FSR_IsActive();
+	bool useTaaScene = TAA_IsActive() && !FSR_IsActive();
 
 	for ( ; cmds ; cmds = (const emptyCommand_t *)cmds->next ) {
 		switch ( cmds->commandId ) {
@@ -667,26 +669,34 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 			break;
 		case RC_DRAW_VIEW: {
 			bool is3D = ( ((const drawSurfsCommand_t *)cmds)->viewDef->viewEntitys != NULL );
-			if ( FSR_IsActive() ) {
-				if ( is3D && !fsrSceneOpen ) {
-					FSR_BeginScene();   // bind scene FBO
-					fsrSceneOpen = true;
-				} else if ( !is3D && fsrSceneOpen ) {
-					FSR_EndScene();     // EASU+RCAS, restore default FB
-					fsrSceneOpen = false;
+			
+			if ( useFsrScene || useTaaScene ) {
+				if ( is3D && !sceneOpen ) {
+					if ( useFsrScene ) {
+						FSR_BeginScene();
+					} else {
+						TAA_BeginScene();
+					}
+					sceneOpen = true;
+				} else if ( !is3D && sceneOpen ) {
+					if ( TAA_IsActive() ) {
+						TAA_VelocityPass();
+						TAA_Resolve();
+					}
+					if ( useFsrScene ) {
+						FSR_EndScene();
+					} else {
+						TAA_StoreMatrices();
+						RB_SetDefaultGLState();
+					}
+					sceneOpen = false;
 				}
-				if ( !is3D ) {
-					// The front-end built this viewDef while glConfig/renderCrops were
-					// at internal resolution, so the view viewport/scissor and every
-					// per-surface scissorRect are in e.g. 704x384 coordinates.
-					// Scale everything up to display resolution so the 2D HUD/UI fills
-					// the full screen rather than the top-left corner.
+				if ( !is3D && useFsrScene ) {
 					viewDef_t *vd = ((drawSurfsCommand_t *)cmds)->viewDef;
 
 					float scaleX = (float)fsr.displayWidth  / (float)fsr.internalWidth;
 					float scaleY = (float)fsr.displayHeight / (float)fsr.internalHeight;
 
-					// View-level viewport and scissor
 					vd->viewport.x1 = 0;
 					vd->viewport.y1 = 0;
 					vd->viewport.x2 = fsr.displayWidth  - 1;
@@ -696,7 +706,6 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 					vd->scissor.x2  = fsr.displayWidth  - 1;
 					vd->scissor.y2  = fsr.displayHeight - 1;
 
-					// Per-surface scissor rects
 					for ( int i = 0; i < vd->numDrawSurfs; i++ ) {
 						idScreenRect &sr = vd->drawSurfs[i]->scissorRect;
 						sr.x1 = (short)( sr.x1 * scaleX );
@@ -715,9 +724,18 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 			c_setBuffers++;
 			break;
 		case RC_SWAP_BUFFERS:
-			if ( fsrSceneOpen ) {
-				FSR_EndScene();
-				fsrSceneOpen = false;
+			if ( sceneOpen ) {
+				if ( TAA_IsActive() ) {
+					TAA_VelocityPass();
+					TAA_Resolve();
+				}
+				if ( useFsrScene ) {
+					FSR_EndScene();
+				} else {
+					TAA_StoreMatrices();
+					RB_SetDefaultGLState();
+				}
+				sceneOpen = false;
 			}
 			RB_SwapBuffers( cmds );
 			c_swapBuffers++;

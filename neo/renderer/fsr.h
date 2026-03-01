@@ -32,6 +32,12 @@ struct fsrState_t {
 	GLuint sceneColorTex;
 	GLuint sceneDepthRBO;
 
+	// Depth texture for TAA velocity pass (only created when TAA is active)
+	GLuint sceneDepthTex;
+
+	// Velocity texture (for TAA, attached to scene FBO as COLOR_ATTACHMENT1)
+	GLuint velocityTex;
+
 	// EASU output FBO (displayWidth x displayHeight; only used when RCAS is active)
 	GLuint easuFBO;
 	GLuint easuColorTex;

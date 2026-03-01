@@ -1696,4 +1696,6 @@ idScreenRect R_CalcIntersectionScissor( const idRenderLightLocal * lightDef,
 
 //=============================================
 
+#include "renderer/taa.h"
+
 #endif /* !__TR_LOCAL_H__ */

@@ -38,6 +38,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "renderer/RenderWorld_local.h"
 
 #include "renderer/tr_local.h"
+#include "renderer/taa.h"
 
 //====================================================================
 
@@ -901,7 +902,10 @@ void R_SetupProjection( viewDef_t * viewDef ) {
 	// random jittering is usefull when multiple
 	// frames are going to be blended together
 	// for motion blurred anti-aliasing
-	if ( r_jitter.GetBool() ) {
+	if ( TAA_IsActive() ) {
+		jitterx = taa.jitterX;
+		jittery = taa.jitterY;
+	} else if ( r_jitter.GetBool() ) {
 		jitterx = random.RandomFloat();
 		jittery = random.RandomFloat();
 	} else {
